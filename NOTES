@@ -1,0 +1,30 @@
+# NOTES:
+
+# Create by pool id, no name given
+
+/opt/Navisphere/bin/naviseccli -h HOSTNAME lun -create -type NonThin -capacity 2 -sq gb -poolId 0 -sp A
+
+# Create by pool name, no name given
+
+/opt/Navisphere/bin/naviseccli -h HOSTNAME lun -create -type NonThin -capacity 2 -sq gb -poolName Ganeti-Test-Pool-0 -sp A
+
+# Create by pool name, explicit naming (VOL_NAME from Ganeti)
+/opt/Navisphere/bin/naviseccli -h HOSTNAME lun -create -type NonThin -capacity 2 -sq gb -poolName Ganeti-Test-Pool-0 -sp A -name '84f18ad5-f334-4335-8ffc-55d820c08055.ext.disk0'
+
+# Destroying
+
+## Will prompt for confirmation:
+
+/opt/Navisphere/bin/naviseccli -h HOSTNAME lun -destroy -l 0
+Are you sure you want to perform this operation?(y/n): n
+
+## -o = override (guessing)
+
+### by id
+
+/home/kenet/clariion-ext-prov/clariion-navisec# /opt/Navisphere/bin/naviseccli -h HOSTNAME lun -destroy -l 0 -o
+
+### by name
+
+/home/kenet/clariion-ext-prov/clariion-navisec# /opt/Navisphere/bin/naviseccli -h HOSTNAME lun -destroy -name NAME_OF_LUN -o
+

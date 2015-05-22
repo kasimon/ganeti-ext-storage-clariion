@@ -29,9 +29,6 @@ following variables should be present:
 
  - VOL_NAME        : The UUID of the new Image file
  - VOL_SIZE        : The size of the new Image (in megabytes)
- - EXTP_DISKGROUP : The EVA disk group
- - EXTP_RAID       : The EVA disk RAID type
- - EXTP_NAME       : The VD NAME
 
 Return O after successfull creation, 1 on failure
 
@@ -46,18 +43,14 @@ sys.path.append("/usr/share/ganeti/default")
 from ganeti import utils
 
 #Config
-config_file = "/etc/ganeti/extstorage/eva.conf"
+config_file = "/etc/ganeti/extstorage/clariion.conf"
 config = ConfigParser.SafeConfigParser()
 if not config.read(config_file):
    raise ConfigParser.Error("Unable to read config file")
 
-manap           = config.get('eva','manap')
-login           = config.get('eva','login')
-password        = config.get('eva','password')
-array           = config.get('eva','array')
-vd_raid         = config.get('eva','vd_raid')
-disk_group      = config.get('eva','disk_group')
-cluiclient_path = config.get('eva','cluiclient_path')
+storage         = config.get('clariion','storage')
+sp              = config.get('clariion','sp')
+naviseccli_path = config.get('clariion','naviseccli_path')
 
 def ReadEnv():
   """Read the mandatory enviromental variables
@@ -78,15 +71,7 @@ def ReadEnv():
     sys.stderr.write('The environment variable VOL_SIZE is missing.\n')
     sys.exit(1)
 
-  dg = os.getenv("EXTP_DISKGROUP")
-  if dg is None:
-    dg=disk_group 	
-
-  raid = os.getenv("EXTP_RAID")
-  if raid is None:
-    raid=vd_raid
-
-  return (name, dg, raid, size)
+  return (name, size)
 
 def main():
   sys.stderr.write('Creation started...\n')
