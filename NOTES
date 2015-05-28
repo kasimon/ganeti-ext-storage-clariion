@@ -1,30 +1,70 @@
-# NOTES:
+# Primitives for the Clariion (VNX may be different)
 
-# Create by pool id, no name given
+## Assumptions:
 
-/opt/Navisphere/bin/naviseccli -h HOSTNAME lun -create -type NonThin -capacity 2 -sq gb -poolId 0 -sp A
+* we are using a pool (not a raid group), otherwise the 'lun' commands are unavailable.
 
-# Create by pool name, no name given
+* the credentials has already been created by a command similar to this:
 
-/opt/Navisphere/bin/naviseccli -h HOSTNAME lun -create -type NonThin -capacity 2 -sq gb -poolName Ganeti-Test-Pool-0 -sp A
+~~~
+naviseccli -AddUserSecurity -Scope 1 -User <username>
+~~~
 
-# Create by pool name, explicit naming (VOL_NAME from Ganeti)
-/opt/Navisphere/bin/naviseccli -h HOSTNAME lun -create -type NonThin -capacity 2 -sq gb -poolName Ganeti-Test-Pool-0 -sp A -name '84f18ad5-f334-4335-8ffc-55d820c08055.ext.disk0'
+You will be prompted for the password used to acccess the storage box
+(subsequently specified with `-h`). The username specified is expected
+to have been created on the storage system by the administrator.
+
+This command will create ($HOME by default), two files:
+
+* SecuredCLISecurityFile.xml
+* SecuredCLIXMLEncrypted.key
+
+## Functions
+
+We need to implement 4 functions:
+
+create
+attach
+detach
+remove
+
+Optionnally: grow
+
+# Create
+
+Example commands:
+
+## Create by pool id (not the pool name), no name given to the LUN
+
+naviseccli -h HOSTNAME lun -create -type NonThin -capacity 2 -sq gb -poolId 0 -sp A
+
+## Create by pool name (not the pool id), no name given to the LUN
+
+naviseccli -h HOSTNAME lun -create -type NonThin -capacity 2 -sq gb -poolName Ganeti-Test-Pool-0 -sp A
+
+## Create by pool name (not the pool id), explicit naming (VOL_NAME from Ganeti)
+
+naviseccli -h HOSTNAME lun -create -type NonThin -capacity 2 -sq gb -poolName Ganeti-Test-Pool-0 -sp A -name '84f18ad5-f334-4335-8ffc-55d820c08055.ext.disk0'
 
 # Destroying
 
-## Will prompt for confirmation:
+## Destroy by number, prompt for confirmation:
 
-/opt/Navisphere/bin/naviseccli -h HOSTNAME lun -destroy -l 0
+naviseccli -h HOSTNAME lun -destroy -l 0
 Are you sure you want to perform this operation?(y/n): n
 
-## -o = override (guessing)
+## Destroy by number, no prompt for confirmation:
 
-### by id
+naviseccli -h HOSTNAME lun -destroy -l 0 -o
 
-/home/kenet/clariion-ext-prov/clariion-navisec# /opt/Navisphere/bin/naviseccli -h HOSTNAME lun -destroy -l 0 -o
+## Destroy by name, no prompt for confirmation
 
-### by name
+naviseccli -h HOSTNAME lun -destroy -name NAME_OF_LUN -o
 
-/home/kenet/clariion-ext-prov/clariion-navisec# /opt/Navisphere/bin/naviseccli -h HOSTNAME lun -destroy -name NAME_OF_LUN -o
+# Growing (by id, name is similar)
 
+~~~
+naviseccli -h HOSTNAME lun -expand -l 0 -capacity 3 -sq gb [-o]
+~~~
+
+Note that capacity is an absolute value, and must be greated than the initial capacity

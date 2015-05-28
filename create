@@ -44,13 +44,16 @@ from ganeti import utils
 
 #Config
 config_file = "/etc/ganeti/extstorage/clariion.conf"
+#config_file = "./clariion.conf.local"
 config = ConfigParser.SafeConfigParser()
 if not config.read(config_file):
    raise ConfigParser.Error("Unable to read config file")
 
-storage         = config.get('clariion','storage')
-sp              = config.get('clariion','sp')
-naviseccli_path = config.get('clariion','naviseccli_path')
+e_storage         = config.get('clariion','storage')
+e_poolname        = config.get('clariion','poolname')
+e_naviseccli_path = config.get('clariion','naviseccli_path')
+e_sp              = config.get('clariion','sp')
+e_type            = config.get('clariion','type')
 
 def ReadEnv():
   """Read the mandatory enviromental variables
@@ -81,14 +84,20 @@ def main():
     sys.stderr.write('Wrong environment. Aborting...\n')
     sys.exit(1)
 
-  vd_name,dg, raid, vd_size = env
+  vd_name, vd_size = env
 
-  sys.stderr.write('name: %s, dg: %s, size: %s\n' % (vd_name, dg, vd_size))
+  sys.stderr.write('name: %s, size: %s\n' % (vd_name, vd_size))
 
   # Create VD
-  cmd = ["%s/sbin/clui.sh" % cluiclient_path, "-c", "-u", "%s" % login, "-p", "%s" % password, "-h", "%s" % manap,
-         "-s", "%s" % array, "add vd", "%s" % vd_name, "size=%s dg=%s vrl=%s" % (vd_size, dg, raid)] 
-  result = utils.RunCmd(cmd)
+  cmd = ["%s" % e_naviseccli_path, "-h %s" % e_storage, "lun -create -type %s" % e_type, "-capacity %s" % vd_size,
+	"-sq mb -sp %s " % e_sp, "-poolname %s" % e_poolname, "-name %s" % vd_name]
+
+  cmd_string = " ".join(cmd)
+
+  print(cmd)
+  print(cmd_string)
+
+  result = utils.RunCmd(cmd_string)
 
   if result.failed:
     sys.stderr.write('VD creation failed (%s): %s\n' %
