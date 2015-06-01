@@ -36,15 +36,74 @@ Example commands:
 
 ## Create by pool id (not the pool name), no name given to the LUN
 
+~~~
 naviseccli -h HOSTNAME lun -create -type NonThin -capacity 2 -sq gb -poolId 0 -sp A
+~~~
 
 ## Create by pool name (not the pool id), no name given to the LUN
 
+~~~
 naviseccli -h HOSTNAME lun -create -type NonThin -capacity 2 -sq gb -poolName Ganeti-Test-Pool-0 -sp A
+~~~
 
 ## Create by pool name (not the pool id), explicit naming (VOL_NAME from Ganeti)
 
+~~~
 naviseccli -h HOSTNAME lun -create -type NonThin -capacity 2 -sq gb -poolName Ganeti-Test-Pool-0 -sp A -name '84f18ad5-f334-4335-8ffc-55d820c08055.ext.disk0'
+~~~
+
+# Attaching
+
+Does this belong in the "Create" ? Same question for Detaching
+
+~~~
+naviseccli -h HOSTNAME storagegroup -addhlu -gname gnt-cluster-00 -hlu <host_lun_SCSIID> -alu <CX_lun_ID> 
+~~~
+
+
+Note: the process for attaching/detaching is as follows:
+
+1. Create LUN as above
+2. Map LUN to HLU/ALU and attach to group as per above. To do so:
+
+    - find lun by name:
+
+~~~
+naviseccli -h HOSTNAME lun -list -name NAMEOFLUN -uid
+~~~
+
+    - get UID, add 3 in front, i.e.:
+
+~~~
+naviseccli -h HOSTNAME lun -list -name blah -uid | grep UID | sed -e 's|^UID:  ||' -e 's|:||g'
+~~~
+
+	map lun to HLU
+
+~~~
+naviseccli -h HOSTNAME storagegroup -addhlu -gname gnt-cluster-00 -alu 2 -hlu 12345
+~~~
+
+TODO: need to find a scheme/logic for allocating HLU/ALU.
+HLU = seen from the host
+ALU = seen from the storage
+
+3. Issue lip on node that is part of the storage group
+
+~~~
+ls -d /sys/class/fc_host/host*/issue_lip | xargs echo 1 > {} \;
+~~~
+
+
+4. Verify the device has appeared
+
+~~~
+multipath -ll
+~~~
+
+Note: verify that a restart of multipath-tools isn't required for
+the device to show up.
+
 
 # Destroying
 
@@ -61,10 +120,49 @@ naviseccli -h HOSTNAME lun -destroy -l 0 -o
 
 naviseccli -h HOSTNAME lun -destroy -name NAME_OF_LUN -o
 
-# Growing (by id, name is similar)
+## Detach
+
+Note: We only care about the -hlu param.
+
+1. Remove device from multipath
+
+~~~
+multipath -f UID/WWNAME
+~~~
+
+2. Remove HLU (unmap)
+
+~~~
+naviseccli -h HOSTNAME storagegroup -removehlu -gname gnt-cluster-00 -hlu 12345 -o
+~~~
+
+Note: I think unmapping needs to be done in destroy, since
+the LUN needs to be visible by all nodes in the hostgroup for
+migration purposes. Unmapping should limit itself to removing
+the path from multipath with `multipath -f`. To be confirmed.
+
+
+## Growing (by id, name is similar)
 
 ~~~
 naviseccli -h HOSTNAME lun -expand -l 0 -capacity 3 -sq gb [-o]
 ~~~
 
-Note that capacity is an absolute value, and must be greated than the initial capacity
+Notes:
+
+- capacity is an absolute value, and must be greated than the initial capacity
+
+- resizing requires rescanning since the size of the block device has changed,
+  i.e.: `issue_lip` ?
+
+Note: see https://help.ubuntu.com/lts/serverguide/multipath-admin-and-troubleshooting.html
+
+... for notes on resizing
+
+Links:
+
+* http://unixadminschool.com/blog/2014/05/red-hat-enterprise-linux-configuring-dm-multipath-for-emc-clariion-san-storage/#
+
+* http://nycstorm.com/nycfiles/repository/hpark/docu5128_Host-Connectivity-Guide-for-Linux.pdf
+
+* https://www.novell.com/support/kb/doc.php?id=7009660
