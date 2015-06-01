@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 #  Version : 0.1
-#  Author  : Sylvain Costard <at> univ-rennes2.fr
-#  Université Rennes 2
+#  Author  : regnauld@nsrc.org for KENET
+#  Derived from Uni Rennes 2 work
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -43,8 +43,8 @@ sys.path.append("/usr/share/ganeti/default")
 from ganeti import utils
 
 #Config
-config_file = "/etc/ganeti/extstorage/clariion.conf"
-#config_file = "./clariion.conf.local"
+#config_file = "/etc/ganeti/extstorage/clariion.conf"
+config_file = "./clariion.conf.local"
 config = ConfigParser.SafeConfigParser()
 if not config.read(config_file):
    raise ConfigParser.Error("Unable to read config file")
@@ -69,7 +69,8 @@ def ReadEnv():
     sys.stderr.write('The environment variable VOL_NAME is missing.\n')
     sys.exit(1)
 
-  size = str(int(os.getenv("VOL_SIZE")) // 1024)
+  # XXX we don't need to divide by 1024, since the size spec is in MB
+  size = str(int(os.getenv("VOL_SIZE")) // 1)
   if size is None:
     sys.stderr.write('The environment variable VOL_SIZE is missing.\n')
     sys.exit(1)
