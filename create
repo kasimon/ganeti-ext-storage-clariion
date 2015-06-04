@@ -90,16 +90,12 @@ def main():
   sys.stderr.write('name: %s, size: %s\n' % (vd_name, vd_size))
 
   # Create VD
-  cmd = ["%s" % e_naviseccli_path, "-h %s" % e_storage, "lun -create -type %s" % e_type, "-capacity %s" % vd_size,
-	"-sq mb -sp %s " % e_sp, "-poolname %s" % e_poolname, "-name %s" % vd_name]
-
-  cmd_string = " ".join(cmd)
+  cmd = "%s -h %s lun -create -type %s -capacity %s -sq mb -sp %s -poolname %s -name %s" % (e_naviseccli_path, e_storage, e_type, vd_size, e_sp, e_poolname, vd_name)
 
   # Debug output
   # print(cmd)
-  # print(cmd_string)
 
-  result = utils.RunCmd(cmd_string)
+  result = utils.RunCmd(cmd)
 
   if result.failed:
     sys.stderr.write('VD creation failed (%s): %s\n' %
