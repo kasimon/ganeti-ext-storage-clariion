@@ -1,2 +1,4 @@
 - fix the MiBi / MB sizing issue in create
 - implement growing
+
+- add support for VNX
