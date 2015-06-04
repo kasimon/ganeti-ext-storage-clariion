@@ -4,7 +4,15 @@
 
 * we are using a pool (not a raid group), otherwise the 'lun' commands are unavailable.
 
-* the credentials has already been created by a command similar to this:
+* one storage group / node! See "Logic" further down
+
+* each node will need to be added to the required storage group
+
+* when mapping HLU, simply use the ALU id. Multipath gets confused when seeing the
+  same WWID appearing with different HLUs, but if we destroy a LUN and recreate it
+  (thus recycling LUNs as they get autoallocated), then there should be no problem
+
+* the credentials has already been created by a command similar to this
 
 ~~~
 naviseccli -AddUserSecurity -Scope 1 -User <username>
@@ -21,14 +29,34 @@ This command will create ($HOME by default), two files:
 
 ## Functions
 
-We need to implement 4 functions:
+We need to implement 5 primitives:
 
 create
 attach
 detach
 remove
+grow
 
-Optionnally: grow
+The actions for each of these:
+
+1. create
+
+- create LUN by name, size
+
+2. attach
+
+- map LUN to storage group (ALU, HLU)
+- issue lip
+
+3. detach
+
+- multipath -f
+- unmap LUN from storage group
+- issue_lip
+
+4. destroy
+
+- destroy LUN
 
 # Create
 
@@ -54,14 +82,7 @@ naviseccli -h HOSTNAME lun -create -type NonThin -capacity 2 -sq gb -poolName Ga
 
 # Attaching
 
-Does this belong in the "Create" ? Same question for Detaching
-
-~~~
-naviseccli -h HOSTNAME storagegroup -addhlu -gname gnt-cluster-00 -hlu <host_lun_SCSIID> -alu <CX_lun_ID> 
-~~~
-
-
-Note: the process for attaching/detaching is as follows:
+## REMINDER: the process for attaching/detaching is as follows:
 
 1. Create LUN as above
 2. Map LUN to HLU/ALU and attach to group as per above. To do so:
@@ -75,37 +96,62 @@ naviseccli -h HOSTNAME lun -list -name NAMEOFLUN -uid
     - get UID, add 3 in front, i.e.:
 
 ~~~
-naviseccli -h HOSTNAME lun -list -name blah -uid | grep UID | sed -e 's|^UID:  ||' -e 's|:||g'
+naviseccli -h HOSTNAME lun -list -name blah -uid | grep UID: | sed -e 's|^UID:  ||' -e 's|:||g' | tr '[A-Z]' '[a-z]'
 ~~~
 
 	map lun to HLU
 
 ~~~
-naviseccli -h HOSTNAME storagegroup -addhlu -gname gnt-cluster-00 -alu 2 -hlu 12345
+naviseccli -h HOSTNAME storagegroup -addhlu -gname NODE_STORAGEGROUP -alu 2 -hlu HLUID
 ~~~
 
 TODO: need to find a scheme/logic for allocating HLU/ALU.
 HLU = seen from the host
 ALU = seen from the storage
 
-3. Issue lip on node that is part of the storage group
+
+## Attaching proper :)
+
+## Map the internal lun (ALU) to a HLU (HLU == ALU id)
+
+~~~
+naviseccli -h HOSTNAME storagegroup -addhlu -gname NODE_STORAGEGROUP -hlu <host_lun_SCSIID> -alu <CX_lun_ID> 
+~~~
+
+1. Issue lip on node that is part of the storage group
 
 ~~~
 ls -d /sys/class/fc_host/host*/issue_lip | xargs echo 1 > {} \;
 ~~~
 
 
-4. Verify the device has appeared
+2. Verify the device has appeared
 
 ~~~
 multipath -ll
 ~~~
 
-Note: verify that a restart of multipath-tools isn't required for
-the device to show up.
-
-
 # Destroying
+
+Process:
+
+- unmap by HLU from storage group
+- issue a lip
+- destroy LUN
+
+1. Remove HLU (unmap)
+
+~~~
+naviseccli -h HOSTNAME storagegroup -removehlu -gname NODE_STORAGEGROUP -hlu HLUID -o
+~~~
+
+2. 1. Issue lip on node that is part of the storage group
+
+~~
+ls -d /sys/class/fc_host/host*/issue_lip | xargs echo 1 > {} \;
+~~
+
+3. Destroy using any method below:
 
 ## Destroy by number, prompt for confirmation:
 
@@ -124,22 +170,29 @@ naviseccli -h HOSTNAME lun -destroy -name NAME_OF_LUN -o
 
 Note: We only care about the -hlu param.
 
-1. Remove device from multipath
+Process:
+
+- unmap by HLU from storage group
+- issue a lip
+-  remove LUN from multipath
+
+1. Remove HLU (unmap)
+
+~~
+naviseccli -h HOSTNAME storagegroup -removehlu -gname NODE_STORAGEGROUP -hlu HLUID -o
+~~
+
+2. Issue lip on node that is part of the storage group
+
+~~
+ls -d /sys/class/fc_host/host*/issue_lip | xargs echo 1 > {} \;
+~~
+
+3. Remove device from multipath
 
 ~~~
 multipath -f UID/WWNAME
 ~~~
-
-2. Remove HLU (unmap)
-
-~~~
-naviseccli -h HOSTNAME storagegroup -removehlu -gname gnt-cluster-00 -hlu 12345 -o
-~~~
-
-Note: I think unmapping needs to be done in destroy, since
-the LUN needs to be visible by all nodes in the hostgroup for
-migration purposes. Unmapping should limit itself to removing
-the path from multipath with `multipath -f`. To be confirmed.
 
 
 ## Growing (by id, name is similar)
@@ -166,3 +219,37 @@ Links:
 * http://nycstorm.com/nycfiles/repository/hpark/docu5128_Host-Connectivity-Guide-for-Linux.pdf
 
 * https://www.novell.com/support/kb/doc.php?id=7009660
+
+
+# Logic for the storage provider
+                                                    ____ contains____ node_A
+                                                   /                          
+ LUN 1 ----mapped-to ___   +-- Storage_Group_Node_A                             
+                        \ /    
+                         X    
+ LUN 2 ----mapped-to ___/ \ 
+                           +-- Storage_Group_Node_B
+                                                   \____ contains____ node_B  
+                                                                  
+
+In the example above:
+
+- Each node has its own storage group (CX3 = 512 storage groups, CX3, 2048)
+- node_A is in the storage group of the same name
+- node_B is in the storage group of the same name
+- node A is using lun 2
+- node B is using lun 1
+
+# Relations
+
+LUN uuid (block device name is derived from this) <---> multipath name (block device id = HLU)
+    ^
+    |
+    v
+LUN id (ALU) <-> HLU
+    ^
+    |
+    v
+LUN name
+   
+
