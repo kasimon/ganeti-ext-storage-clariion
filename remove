@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 #  Version : 0.1
-#  Author  : Sylvain Costard <at> univ-rennes2.fr
-#  Université Rennes 2
+#  Author  : regnauld@nsrc.org for KENET
+#  Derived from Uni Rennes 2 work
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -22,10 +22,10 @@
 
 # Based on Ganeti EXtStorageProviders code (https://code.grnet.gr/projects/extstorage)
 
-"""destroy an existing EVA VD 
-This program removes an existing Image from EVA
+"""destroy an existing LUN from an EMC Clariion
+This program removes an existing LUN
 
- - VOL_NAME  : The UUID of the Image to map
+ - VOL_NAME  : The UUID of the LUN
  - EXTP_NAME : VD_NAME
 
 """
@@ -39,25 +39,24 @@ sys.path.append("/usr/share/ganeti/default")
 
 from ganeti import utils
 
-# Load Config
-config_file = "/etc/ganeti/extstorage/eva.conf"
+#Config
+#config_file = "/etc/ganeti/extstorage/clariion.conf"
+config_file = "./clariion.conf.local"
 config = ConfigParser.SafeConfigParser()
 if not config.read(config_file):
    raise ConfigParser.Error("Unable to read config file")
 
-manap           = config.get('eva','manap')
-login           = config.get('eva','login')
-password        = config.get('eva','password')
-array           = config.get('eva','array')
-cluiclient_path = config.get('eva','cluiclient_path')
+e_storage         = config.get('clariion','storage')
+e_naviseccli_path = config.get('clariion','naviseccli_path')
 
 def ReadEnv():
   """Read the mandatory enviromental variables
 
   """
+
   if os.getenv("EXTP_NAME") is None :
     name = os.getenv("VOL_NAME")
-  else:
+  else :
     name = os.getenv("EXTP_NAME")
   
   if name is None:
@@ -76,26 +75,23 @@ def main():
 
   sys.stderr.write('name: %s\n' % (vd_name))
 
-  #Get VD uuid
-  cmd = "%s/sbin/clui.sh -c -u %s -p %s -h %s -s %s sho vd %s | awk -F ',' '{print tolower($4)}' | grep -v 'WW Lun Name' | grep - | sed 's/-//g'" % (cluiclient_path,login,password,manap,array,vd_name)
+  cmd = "%s -h %s lun -list -name %s -uid | grep UID | sed -e 's|^UID: ||' -e 's|:||g' | tr '[A-Z]' '[a-z]'" % (e_naviseccli_path, e_storage, vd_name)
+
   result = utils.RunCmd(cmd)
   uuid = result.output
-
 
   #Get multipath device
   cmd = "multipath -ll 3%s | head -1 | awk '{print $1}'" % uuid.strip()
   result = utils.RunCmd(cmd)
   device = result.output
 
-  
   # If device is presented -> quit
   if device.strip():
     sys.stderr.write('Device mapped on %s. Aborting...\n' % device)
     sys.exit(1)
 
-
-  #Remove VD
-  cmd  = ["%s/sbin/clui.sh" % cluiclient_path , "-c", "-u", "%s" % login, "-p", "%s" % password, "-h", "%s" % manap, "-s", "%s" % array, "del vd %s " % vd_name] 
+  # Remove LUN
+  cmd = "%s -h %s lun -destroy -name %s -o" % (e_naviseccli_path, e_storage, vd_name)
   result = utils.RunCmd(cmd)
 
   if result.failed:
