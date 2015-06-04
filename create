@@ -22,9 +22,9 @@
 
 # Based on Ganeti EXtStorageProviders code (https://code.grnet.gr/projects/extstorage)
 
-"""Create a new Image inside a HP EVA 
-This program creates a new Image VD file inside a HP EVA.
-It takes it's input from environment variables. Specifically the
+"""Create a new LUN
+This program creates a new LUN inside a EMC Clariion
+It takes its input from environment variables. Specifically the
 following variables should be present:
 
  - VOL_NAME        : The UUID of the new Image file
@@ -95,8 +95,9 @@ def main():
 
   cmd_string = " ".join(cmd)
 
-  print(cmd)
-  print(cmd_string)
+  # Debug output
+  # print(cmd)
+  # print(cmd_string)
 
   result = utils.RunCmd(cmd_string)
 
