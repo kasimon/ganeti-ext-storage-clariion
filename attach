@@ -2,10 +2,9 @@
 # -*- coding: utf-8 -*-
 
 #  Version : 0.1
-#  Author  : Sylvain Costard <at> univ-rennes2.fr
-#  Université Rennes 2
-#
-  
+#  Author  : regnauld@nsrc.org for KENET
+#  Derived from Uni Rennes 2 work
+
 ##
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -25,21 +24,24 @@
 # Based on Ganeti EXtStorageProviders code (https://code.grnet.gr/projects/extstorage)
 
 """
-Maps an existing EVA VD to a block device
-This program maps an existing Image to a block device
+Maps an existing EMC Clariion VD to a block device
+This program maps an existing LUN to a block device
 e.g. /dev/mapper/{X} and returns the device path. If the mapping
 already exists, it returns the corresponding device path.
-It takes it s input from environment variables. Specifically the
+It takes its input from environment variables. Specifically the
 following variables should be present:
 
- - VOL_NAME : UUID of the Image to map
+ - VOL_NAME : Ganeti name (uuid + ext + disk#)
  - EXTP_NAME: VD_NAME
 
 Returns the block device path (which maps the Image) as a string
 upon success, or 1 upon failure"""
 
 import os
+import re
 import sys
+import socket
+import time
 import ConfigParser
 import subprocess
 
@@ -47,18 +49,15 @@ sys.path.append("/usr/share/ganeti/default")
 
 from ganeti import utils
 
-#config read
-config_file = "/etc/ganeti/extstorage/eva.conf"
+#Config
+#config_file = "/etc/ganeti/extstorage/clariion.conf"
+config_file = "./clariion.conf.local"
 config = ConfigParser.SafeConfigParser()
-
 if not config.read(config_file):
    raise ConfigParser.Error("Unable to read config file")
 
-manap           = config.get('eva','manap')
-login           = config.get('eva','login')
-password        = config.get('eva','password')
-array           = config.get('eva','array')
-cluiclient_path = config.get('eva','cluiclient_path')
+e_storage         = config.get('clariion','storage')
+e_naviseccli_path = config.get('clariion','naviseccli_path')
 
 def ReadEnv():
   """Read the mandatory enviromental variables
@@ -85,29 +84,74 @@ def main():
 
   sys.stderr.write('name: %s\n' % (vd_name))
 
-  # Present VD
-  dom0 = utils.RunCmd("hostname | sed 's/^./\u&/;'")
-  cmd  = ["%s/sbin/clui.sh" % cluiclient_path , "-c", "-u", "%s" % login, "-p", "%s" % password, "-h", "%s" % manap,
-          "-s", "%s" % array, "set vd %s ap=%s" % (vd_name,dom0.output.strip())] 
- 
- 
+  # Find our hostname (alternatively: utils.RunCmd("hostname -s"))
+  hostname = socket.gethostname()
+
+  # Find the lun id of the name we want to attach
+  # Map to storage group named like host with HLU = ALU
+
+  # Find ALU and UUID of the LUN, by name
+
+  cmd = "%s -h %s lun -list -name %s -uid" % (e_naviseccli_path, e_storage, vd_name)
+
   result = utils.RunCmd(cmd)
-  
+
+  # Debug
+  # print cmd
+  # print result.output
+
   if result.failed:
-    sys.stderr.write('VD attachment failed (%s): %s\n' %
+    sys.stderr.write('LUN lookup failed (%s): %s\n' %
                      (result.fail_reason, result.output))
     return 1
 
-  result = utils.RunCmd('ls -d /sys/class/fc_host/host*/issue_lip | xargs -i echo "echo 1 > {}" | sh')
- # device = utils.RunCmd("((pvs | grep mpath | awk '{print $1}' | sed 's#/dev/mapper/##' | sed 's/-part1//')&& (multipath -l | grep mpath | awk '{print $1}')) | sort  | uniq -u")
+  # Find ALU
+  pattern_alu = re.compile('LOGICAL UNIT NUMBER (\d)')
+  alu = pattern_alu.findall(result.output)[0]
+  print alu
 
-  #Get VD uuid
-  cmd = "%s/sbin/clui.sh -c -u %s -p %s -h %s -s %s sho vd %s | awk -F ',' '{print tolower($4)}' | grep -v 'WW Lun Name' | grep - | sed 's/-//g'" % (cluiclient_path,login,password,manap,array,vd_name)
+  # Find UID
+  pattern_uid = re.compile('UID:\s+(.*)')
+  lun_uid_raw = pattern_uid.findall(result.output)[0]
+  lun_uid_raw0 = lun_uid_raw.lower() 
+  lun_uid = lun_uid_raw0.replace(':','')
+
+  # XXX assumed to be static
+  print '3' + lun_uid
+
+  # We have found the ALU (LUN UNIT NUMBER as viewed by the storage box)
+  # Let's map this to the storage group named like the host (expected to exist)
+  cmd = "%s -h %s storagegroup -addhlu -gname %s -alu %s -hlu %s" % (e_naviseccli_path, e_storage, hostname, alu, alu)
+
   result = utils.RunCmd(cmd)
-  uuid = result.output
+
+  # Debug
+  print cmd
+  print result.output 
+
+  if result.failed:
+    sys.stderr.write('LUN mapping failed (%s): %s\n' %
+                     (result.fail_reason, result.output))
+    return 1
+
+  # Issue LIP to all FC adapters
+  cmd = 'ls -d /sys/class/fc_host/host*/issue_lip | xargs -i echo "echo 1 > {}" | sh'
+  result = utils.RunCmd(cmd)
+
+  # Debug
+  print cmd
+  print result.output
+
+  # This seems to make it happen
+  cmd = "multipath"
+  print cmd
+  utils.RunCmd(cmd)
+  # Give time for multipath to find the device
+  time.sleep(5)
 
   #Get multipath device
-  cmd = "multipath -ll 3%s | head -1 | awk '{print $1}'" % uuid.strip()
+  cmd = "multipath -ll 3%s | head -1 | awk '{print $1}'" % lun_uid
+  print cmd
   device = utils.RunCmd(cmd)
  
   sys.stdout.write("/dev/mapper/%s" % device.output.strip())
